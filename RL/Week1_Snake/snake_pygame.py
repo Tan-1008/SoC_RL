@@ -5,6 +5,7 @@ Some additional features I added :
 1. A background checkered board 
 2. A score counter in the bottom right to keep track during the game too
 3. A check to make sure fruit isnt spawned at any current block occupied by snake
+4. Best score Counter
 
 """
 import pygame
@@ -53,6 +54,7 @@ class MAIN:
     def __init__(self):
         self.snake = SNAKE()
         self.fruit = FRUIT(self.snake.body)
+        self.best_score = 0
     
     def update(self):
         self.snake.move_snake()
@@ -106,9 +108,13 @@ class MAIN:
         score_surface =  score_font.render("Score : "+ self.score,True,pygame.Color("purple"))
         score_x = int(cell_size * cell_number - 60)
         score_y = int (cell_number*cell_size - 40)
+        best_score_surface = score_font.render("Best : " + str(self.best_score), True, pygame.Color("blue"))
+        best_score_rect = best_score_surface.get_rect(center=(cell_number*cell_size - 60, cell_number*cell_size - 70))
+        
+
         score_rect = score_surface.get_rect(center = (score_x,score_y))
         screen.blit(score_surface,score_rect)
-
+        screen.blit(best_score_surface, best_score_rect)
     def draw_grass(self):
         grass_color = (167, 209, 60)
         for row in range(cell_number):
@@ -137,8 +143,17 @@ class MAIN:
     def game_over(self):
         my_font = pygame.font.SysFont('times new roman', 50, bold=True)
         small_font = pygame.font.SysFont('times new roman', 30)
+        current_score = len(self.snake.body) - 3
+        self.score = str(current_score)  # still used in rendering
+
+        if current_score > self.best_score:
+            self.best_score = current_score
 
         game_over_surface = my_font.render('Your Score is : ' + str(self.score), True, pygame.Color("red"))
+        best_score_surface = my_font.render('Best Score: ' + str(self.best_score), True, pygame.Color("orange"))
+        best_score_rect = best_score_surface.get_rect(center=(cell_size * cell_number / 2, cell_size * cell_number / 2.5))
+        
+
         game_over_rect = game_over_surface.get_rect(center=(cell_size * cell_number / 2, cell_size * cell_number / 3))
         
         
@@ -154,6 +169,7 @@ class MAIN:
         while True:
             screen.fill((0, 0, 0))  
             screen.blit(game_over_surface, game_over_rect)
+            screen.blit(best_score_surface, best_score_rect)
 
             
             pygame.draw.rect(screen, (0, 200, 0), play_again_rect)  
