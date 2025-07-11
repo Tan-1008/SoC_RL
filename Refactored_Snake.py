@@ -13,6 +13,8 @@ import ctypes
 import sys, random
 from pygame.math import Vector2
 from enum import Enum
+import numpy as np
+
 class Direction():
     RIGHT = Vector2(1, 0)
     LEFT = Vector2(-1, 0)
@@ -61,12 +63,10 @@ class SNAKE:
         self.new_block = True
 class MAIN:
     def __init__(self):
-        self.screen = pygame.display.set_mode((cell_size*cell_number,cell_size*cell_number))
-        self.snake = SNAKE(self.screen)
-        self.fruit = FRUIT(self.snake.body, self.screen)
-        self.score = 0        
+        self.screen = pygame.display.set_mode((cell_size*cell_number,cell_size*cell_number))      
         ctypes.windll.user32.SetForegroundWindow(pygame.display.get_wm_info()['window'])
         self.clock = pygame.time.Clock()
+        self.reset_game()      
 
     def update(self):
         self.snake.move_snake()
@@ -96,50 +96,67 @@ class MAIN:
         if self.fruit.pos==self.snake.body[0]:
             self.fruit.randomize(self.snake.body)
             self.snake.add_block()
+            self.reward = 10
+            self.score += 1
     def check_fail(self):
         if self.snake.body[0].x not in range(0,cell_number) or self.snake.body[0].y not in range(0,cell_number):
             self.game_over()
         for block in self.snake.body[1:]:
             if self.snake.body[0] == block :
                 self.game_over()
-
+        if self.frame_iteration > 100 * len(self.snake) :
+            self.game_over()
     def game_over(self):
         # my_font = pygame.font.SysFont('times new roman', 50, bold=True)
         # small_font = pygame.font.SysFont('times new roman', 30)
-        current_score = len(self.snake.body) - 3
-        self.score = str(current_score)  # still used in rendering
+        self.over = True
+        self.reward = -10
+        self.score = len(self.snake.body) - 3
+          # still used in rendering
+        return self.reward,self.over,self.score
         self.reset_game()
        
     def reset_game(self):
         self.snake = SNAKE(self.screen)       # reset snake position, direction, and body
         self.fruit = FRUIT(self.snake.body,self.screen) 
+        self.frame_iteration = 0
+        self.score = 0
     
-    def move(self):
+    def move(self,action):
         SCREEN_UPDATE = pygame.USEREVENT                
         pygame.time.set_timer(SCREEN_UPDATE,150)
         running = True
         
-        while running:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.game_over()
-                    running = False  # optional, in case you want to cleanly exit
-                if event.type == SCREEN_UPDATE:
-                    self.update()
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_UP and self.snake.direction.y != 1:
-                        self.snake.direction = Direction.UP
-                    if event.key == pygame.K_RIGHT and self.snake.direction.x != -1:
-                        self.snake.direction = Direction.RIGHT
-                    if event.key == pygame.K_DOWN and self.snake.direction.y != -1:
-                        self.snake.direction = Direction.DOWN
-                    if event.key == pygame.K_LEFT and self.snake.direction.x != 1:
-                        self.snake.direction = Direction.LEFT
+        self.frame_iteration += 1
+        self.reward = 0
+        self.over = False   #game_over bool in code
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                quit()
+        
+        clock_wise = [Direction.RIGHT, Direction.DOWN, Direction.LEFT, Direction.UP]
+        idx = clock_wise.index(self.direction)
 
-            self.screen.fill((175, 215, 69))
-            self.draw_elements()
-            pygame.display.update()
-            self.clock.tick(69)
+        if np.array_equal(action, [1, 0, 0]):
+            new_dir = clock_wise[idx] # no change
+        elif np.array_equal(action, [0, 1, 0]):
+            next_idx = (idx + 1) % 4
+            new_dir = clock_wise[next_idx] # right turn r -> d -> l -> u
+        else: # [0, 0, 1]
+            next_idx = (idx - 1) % 4
+            new_dir = clock_wise[next_idx] # left turn r -> u -> l -> d
+
+        self.direction = new_dir
+        self.update()
+        self.screen.fill((175, 215, 69))
+        self.draw_elements()
+        pygame.display.update()
+        self.clock.tick(69)
+
+        return self.reward,self.over,self.score
+      
+            
        
 
 
