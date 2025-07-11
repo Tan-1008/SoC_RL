@@ -113,6 +113,33 @@ class MAIN:
     def reset_game(self):
         self.snake = SNAKE(self.screen)       # reset snake position, direction, and body
         self.fruit = FRUIT(self.snake.body,self.screen) 
+    
+    def move(self):
+        SCREEN_UPDATE = pygame.USEREVENT                
+        pygame.time.set_timer(SCREEN_UPDATE,150)
+        running = True
+        while running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.game_over()
+                    running = False  # optional, in case you want to cleanly exit
+                if event.type == SCREEN_UPDATE:
+                    self.update()
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_UP and self.snake.direction.y != 1:
+                        self.snake.direction = Vector2(0, -1)
+                    if event.key == pygame.K_RIGHT and self.snake.direction.x != -1:
+                        self.snake.direction = Vector2(1, 0)
+                    if event.key == pygame.K_DOWN and self.snake.direction.y != -1:
+                        self.snake.direction = Vector2(0, 1)
+                    if event.key == pygame.K_LEFT and self.snake.direction.x != 1:
+                        self.snake.direction = Vector2(-1, 0)
+
+            self.screen.fill((175, 215, 69))
+            self.draw_elements()
+            pygame.display.update()
+            self.clock.tick(69)
+       
 
 
 pygame.init()
@@ -120,43 +147,43 @@ pygame.init()
 
 cell_size = 30
 cell_number = 15
-#pygame.display.set_caption('Cool Snake Game')
-#screen = pygame.display.set_mode((cell_size*cell_number,cell_size*cell_number))
-#ctypes.windll.user32.SetForegroundWindow(pygame.display.get_wm_info()['window'])
-#clock = pygame.time.Clock()
+
 score = 0
 
 
 main_game = MAIN()
+main_game.move()
 
 
-SCREEN_UPDATE = pygame.USEREVENT                
-pygame.time.set_timer(SCREEN_UPDATE,150)   
 
-while True : 
-    # draw all our elements
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            main_game.game_over()
-        if event.type == SCREEN_UPDATE:
-            main_game.update()
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_UP:
-                if main_game.snake.direction.y != 1 :
-                    main_game.snake.direction = Vector2(0,-1)
-            if event.key == pygame.K_RIGHT:
-                if main_game.snake.direction.x != -1 :
-                    main_game.snake.direction = Vector2(1,0)
-            if event.key == pygame.K_DOWN:
-                if main_game.snake.direction.y != -1 :
-                    main_game.snake.direction = Vector2(0,1)
-            if event.key == pygame.K_LEFT:
-                if main_game.snake.direction.x != 1 :
-                    main_game.snake.direction = Vector2(-1,0)                
+#pygame.display.set_caption('Cool Snake Game')
+#screen = pygame.display.set_mode((cell_size*cell_number,cell_size*cell_number))
+#ctypes.windll.user32.SetForegroundWindow(pygame.display.get_wm_info()['window'])
+#clock = pygame.time.Clock()
+# while True : 
+#     # draw all our elements
+#     for event in pygame.event.get():
+#         if event.type == pygame.QUIT:
+#             main_game.game_over()
+#         if event.type == SCREEN_UPDATE:
+#             main_game.update()
+#         if event.type == pygame.KEYDOWN:
+#             if event.key == pygame.K_UP:
+#                 if main_game.snake.direction.y != 1 :
+#                     main_game.snake.direction = Vector2(0,-1)
+#             if event.key == pygame.K_RIGHT:
+#                 if main_game.snake.direction.x != -1 :
+#                     main_game.snake.direction = Vector2(1,0)
+#             if event.key == pygame.K_DOWN:
+#                 if main_game.snake.direction.y != -1 :
+#                     main_game.snake.direction = Vector2(0,1)
+#             if event.key == pygame.K_LEFT:
+#                 if main_game.snake.direction.x != 1 :
+#                     main_game.snake.direction = Vector2(-1,0)                
         
-    main_game.screen.fill((175,215,69))
-    main_game.draw_elements()
+#     main_game.screen.fill((175,215,69))
+#     main_game.draw_elements()
     
     
-    pygame.display.update()
-    main_game.clock.tick(69)
+#     pygame.display.update()
+#     main_game.clock.tick(69)
