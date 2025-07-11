@@ -13,11 +13,11 @@ import ctypes
 import sys, random
 from pygame.math import Vector2
 from enum import Enum
-class Direction(Enum):
-    RIGHT = 1
-    LEFT = 2
-    UP = 3
-    DOWN = 4
+class Direction():
+    RIGHT = Vector2(1, 0)
+    LEFT = Vector2(-1, 0)
+    UP = Vector2(0, -1)
+    DOWN = Vector2(0, 1)
 class FRUIT:
     def __init__(self,snake_body,screen):                  #using snake_body as an argument to use the self.body from snake class in fruit class
         self.randomize(snake_body)
@@ -37,7 +37,7 @@ class FRUIT:
 
 class SNAKE:
     def __init__(self,screen):
-        self.direction=Vector2(1,0)
+        self.direction=Direction.RIGHT
         self.body = [Vector2(cell_number//4,cell_number//2),Vector2(cell_number//4-1,cell_number//2),Vector2(cell_number//4-2,cell_number//2)]
         self.new_block = False
         self.screen=screen
@@ -118,6 +118,7 @@ class MAIN:
         SCREEN_UPDATE = pygame.USEREVENT                
         pygame.time.set_timer(SCREEN_UPDATE,150)
         running = True
+        
         while running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -127,13 +128,13 @@ class MAIN:
                     self.update()
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_UP and self.snake.direction.y != 1:
-                        self.snake.direction = Vector2(0, -1)
+                        self.snake.direction = Direction.UP
                     if event.key == pygame.K_RIGHT and self.snake.direction.x != -1:
-                        self.snake.direction = Vector2(1, 0)
+                        self.snake.direction = Direction.RIGHT
                     if event.key == pygame.K_DOWN and self.snake.direction.y != -1:
-                        self.snake.direction = Vector2(0, 1)
+                        self.snake.direction = Direction.DOWN
                     if event.key == pygame.K_LEFT and self.snake.direction.x != 1:
-                        self.snake.direction = Vector2(-1, 0)
+                        self.snake.direction = Direction.LEFT
 
             self.screen.fill((175, 215, 69))
             self.draw_elements()
