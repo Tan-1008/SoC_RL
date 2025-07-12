@@ -12,14 +12,21 @@ import pygame
 import ctypes
 import sys, random
 from pygame.math import Vector2
-from enum import Enum
 import numpy as np
+from collections import deque
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
+import os
 
 class Direction():
     RIGHT = Vector2(1, 0)
     LEFT = Vector2(-1, 0)
     UP = Vector2(0, -1)
     DOWN = Vector2(0, 1)
+
 class FRUIT:
     def __init__(self,snake_body,screen):                  #using snake_body as an argument to use the self.body from snake class in fruit class
         self.randomize(snake_body)
@@ -36,7 +43,6 @@ class FRUIT:
             if new_pos not in snake_body :          #imp feature imo that both resources missed, where fruit shouldnt spawn where snake's body is present
                 self.pos = new_pos                  #this makes game less confusing when snake gets long enough
                 break
-
 class SNAKE:
     def __init__(self,screen):
         self.direction=Direction.RIGHT
@@ -61,6 +67,7 @@ class SNAKE:
 
     def add_block(self):
         self.new_block = True
+
 class MAIN:
     def __init__(self):
         self.screen = pygame.display.set_mode((cell_size*cell_number,cell_size*cell_number))      
@@ -155,14 +162,77 @@ class MAIN:
         self.clock.tick(69)
 
         return self.reward,self.over,self.score
-      
-            
-       
+    
+class Linear_QNet(nn.Module):
+    """
+    For our case, input size would mean number of elements in state (11), and output size is no. of possible 
+    actions (3).
+    No activation function after output layer since we're computing raw q values and dont need probabilities
+    """
+    def __init__(self, input_size, hidden_size, output_size): #building the input, hidden and output layer
+        super().__init__() #allows class to access all functions from nn.Module (the parent class)
+        self.linear1 = nn.Linear(input_size, hidden_size)
+        self.linear2 = nn.Linear(hidden_size, output_size)
+    
+    def forward(self, x): #this is a feed-forward neural net where x is current game state
+        x = F.relu(self.linear1(x))
+        x = self.linear2(x)
+        return x        
+
+    def save(self, file_name='model.pth'): #saving the model, later we can reuse the weights and biases if we want
+        model_folder_path = './model'
+        if not os.path.exists(model_folder_path):
+            os.makedirs(model_folder_path)
+
+        file_name = os.path.join(model_folder_path, file_name)
+        torch.save(self.state_dict(), file_name)          
+class QTrainer:
+    def __init__(self, model, lr, gamma): #initializing 
+        self.lr = lr
+        self.gamma = gamma
+        self.model = model
+        self.optimizer = optim.Adam(model.parameters(), lr=self.lr) #optimizer
+        self.criterion = nn.MSELoss() #loss function, use Huber (SmoothL1) if training is unstable
+
+    def train_step(self, state, action, reward, next_state, done): #trainer
+        state = torch.tensor(state, dtype=torch.float)
+        next_state = torch.tensor(next_state, dtype=torch.float)
+        action = torch.tensor(action, dtype=torch.long)
+        reward = torch.tensor(reward, dtype=torch.float)
+
+        if len(state.shape) == 1: #if there 1 dimension
+            state = torch.unsqueeze(state, 0)
+            next_state = torch.unsqueeze(next_state, 0)
+            action = torch.unsqueeze(action, 0)
+            reward = torch.unsqueeze(reward, 0)
+            done = (done,)
+        pred = self.model(state) #using the Q=model predict equation above
+        """
+        rn pred has q values of each action for that given state. in the next line we create a  copy of pred
+        and only update the q value of the action we plan on taking. we do so by applying the bellman equation
+        to that specific q value.
+        """
+        target = pred.clone() #using Qnew = r+y(next predicted Q) as mentionned above
+        for idx in range(len(done)): #if game over or episode ends
+            Q_new = reward[idx]
+            if not done[idx]:
+                Q_new = reward[idx] + self.gamma * torch.max(self.model(next_state[idx]))
+            target[idx][torch.argmax(action[idx]).item()] = Q_new
+
+        self.optimizer.zero_grad() #calculating loss function
+        loss = self.criterion(target, pred)
+        loss.backward()
+        self.optimizer.step()
+
+MAX_MEMORY = 100_000
+BATCH_SIZE = 1000
+LR = 0.001
+
+
+
 
 
 pygame.init()
-
-
 cell_size = 30
 cell_number = 15
 
