@@ -76,6 +76,7 @@ class MAIN:
         self.screen = pygame.display.set_mode((cell_size*cell_number,cell_size*cell_number))      
         ctypes.windll.user32.SetForegroundWindow(pygame.display.get_wm_info()['window'])
         self.clock = pygame.time.Clock()
+        
         self.reset_game()      
 
     def update(self):
@@ -108,13 +109,14 @@ class MAIN:
             self.snake.add_block()
             self.reward = 10
             self.score += 1
+            self.steps_since_last_fruit =0
     def check_fail(self):
         if self.snake.body[0].x not in range(0,cell_number) or self.snake.body[0].y not in range(0,cell_number):
             self.game_over()
         for block in self.snake.body[1:]:
             if self.snake.body[0] == block :
                 self.game_over()
-        if self.frame_iteration > 100 * (self.score + 3) :
+        if self.steps_since_last_fruit > MAX_STEPS_WITHOUT_FRUIT :
             self.game_over()
     def game_over(self):
         # my_font = pygame.font.SysFont('times new roman', 50, bold=True)
@@ -131,6 +133,7 @@ class MAIN:
         self.fruit = FRUIT(self.snake.body,self.screen) 
         self.frame_iteration = 0
         self.score = 0
+        self.steps_since_last_fruit =0
     
     def move(self,action):
         SCREEN_UPDATE = pygame.USEREVENT                
@@ -138,6 +141,7 @@ class MAIN:
         running = True
         
         self.frame_iteration += 1
+        self.steps_since_last_fruit += 1
         self.reward = 0
         self.over = False   #game_over bool in code
         for event in pygame.event.get():
@@ -158,11 +162,14 @@ class MAIN:
             new_dir = clock_wise[next_idx] # left turn r -> u -> l -> d
 
         self.snake.direction = new_dir
+        
         self.update()
         self.screen.fill((175, 215, 69))
         self.draw_elements()
         pygame.display.update()
         self.clock.tick(69)
+        if self.reward == 0:
+            self.reward = -0.01
 
         return self.reward,self.over,self.score
     
@@ -230,12 +237,15 @@ class QTrainer:
 MAX_MEMORY = 100_000
 BATCH_SIZE = 1000
 LR = 0.001
+MAX_STEPS_WITHOUT_FRUIT = 500
 
 class Agent:
     def __init__(self):
         self.main_game = MAIN()
         self.n_games = 0
-        self.epsilon = 0  # randomness
+        self.epsilon = 1  # randomness
+        self.epsilon_min = 0.01
+        self.epsilon_decay = 0.995   
         self.gamma = 0.9  # discount rate
         self.memory = deque(maxlen=MAX_MEMORY)  
         self.model = Linear_QNet(11, 256, 3) #input size, hidden size, output size
@@ -308,9 +318,9 @@ class Agent:
 
     def get_action(self, state):
         # random moves: tradeoff exploration / exploitation
-        self.epsilon = 80 - self.n_games
+        self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_min)
         final_move = [0,0,0]
-        if random.randint(0, 200) < self.epsilon:
+        if random.random() < self.epsilon:
             move = random.randint(0, 2)
             final_move[move] = 1
         else:
@@ -323,9 +333,43 @@ class Agent:
 cell_size = 30
 cell_number = 15
 
+def update_training_plot(plot_scores, plot_mean_scores):
+    # Ensure interactive mode is on
+    plt.ion()
+
+    # Prevent plot window from stealing focus (Windows only)
+    try:
+        import ctypes
+        user32 = ctypes.windll.user32
+        SWP_NOSIZE = 0x0001
+        SWP_NOMOVE = 0x0002
+        SWP_NOACTIVATE = 0x0010
+        HWND_TOP = 0
+        mgr = plt.get_current_fig_manager()
+        hwnd = mgr.window.winfo_id()
+        user32.SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0,
+                            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
+    except Exception as e:
+        print("Could not prevent focus:", e)
+
+    # Clear and update the plot
+    display.clear_output(wait=True)
+    display.display(plt.gcf())
+    plt.clf()
+    plt.title('Training...')
+    plt.xlabel('Number of Games')
+    plt.ylabel('Score')
+    plt.plot(plot_scores)
+    plt.plot(plot_mean_scores)
+    plt.ylim(ymin=0)
+    plt.text(len(plot_scores) - 1, plot_scores[-1], str(plot_scores[-1]))
+    plt.text(len(plot_mean_scores) - 1, plot_mean_scores[-1], str(plot_mean_scores[-1]))
+    plt.pause(0.1)
+
 def train():
     plot_scores = []
     plot_mean_scores = []
+    
     total_score = 0
     record = 0
     pygame.init()
@@ -365,20 +409,8 @@ def train():
             total_score += score
             mean_score = total_score / agent.n_games
             plot_mean_scores.append(mean_score)
-            plt.ion()
-            display.clear_output(wait=True)
-            display.display(plt.gcf())
-            plt.clf()
-            plt.title('Training...')
-            plt.xlabel('Number of Games')
-            plt.ylabel('Score')
-            plt.plot(plot_scores)
-            plt.plot(plot_mean_scores)
-            plt.ylim(ymin=0)
-            plt.text(len(plot_scores)-1, plot_scores[-1], str(plot_scores[-1]))
-            plt.text(len(plot_mean_scores)-1, plot_mean_scores[-1], str(plot_mean_scores[-1]))
-            plt.show(block=False)
-            plt.pause(.1)
+
+            update_training_plot(plot_scores, plot_mean_scores)
             
 
 
