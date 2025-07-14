@@ -14,6 +14,9 @@ import sys, random
 from pygame.math import Vector2
 import numpy as np
 from collections import deque
+import copy
+import matplotlib.pyplot as plt
+from IPython import display
 
 import torch
 import torch.nn as nn
@@ -111,7 +114,7 @@ class MAIN:
         for block in self.snake.body[1:]:
             if self.snake.body[0] == block :
                 self.game_over()
-        if self.frame_iteration > 100 * len(self.snake) :
+        if self.frame_iteration > 100 * (self.score + 3) :
             self.game_over()
     def game_over(self):
         # my_font = pygame.font.SysFont('times new roman', 50, bold=True)
@@ -143,7 +146,7 @@ class MAIN:
                 quit()
         
         clock_wise = [Direction.RIGHT, Direction.DOWN, Direction.LEFT, Direction.UP]
-        idx = clock_wise.index(self.direction)
+        idx = clock_wise.index(self.snake.direction)
 
         if np.array_equal(action, [1, 0, 0]):
             new_dir = clock_wise[idx] # no change
@@ -154,7 +157,7 @@ class MAIN:
             next_idx = (idx - 1) % 4
             new_dir = clock_wise[next_idx] # left turn r -> u -> l -> d
 
-        self.direction = new_dir
+        self.snake.direction = new_dir
         self.update()
         self.screen.fill((175, 215, 69))
         self.draw_elements()
@@ -228,50 +231,166 @@ MAX_MEMORY = 100_000
 BATCH_SIZE = 1000
 LR = 0.001
 
+class Agent:
+    def __init__(self):
+        self.main_game = MAIN()
+        self.n_games = 0
+        self.epsilon = 0  # randomness
+        self.gamma = 0.9  # discount rate
+        self.memory = deque(maxlen=MAX_MEMORY)  
+        self.model = Linear_QNet(11, 256, 3) #input size, hidden size, output size
+        self.trainer = QTrainer(self.model, lr=LR, gamma=self.gamma)     
+    
+    def is_collision(self,direction):
+        
+        head = self.main_game.snake.body[0]
+        new_head = head + direction
 
+        # Wall collision
+        if new_head.x < 0 or new_head.x >= cell_number or new_head.y < 0 or new_head.y >= cell_number:
+            return True
 
+        # Self collision
+        if new_head in self.main_game.snake.body[1:]:
+            return True
 
+        return False
+    
+    
+    def get_state(self):        
+        dir_l = self.main_game.snake.direction == Direction.LEFT
+        dir_r = self.main_game.snake.direction == Direction.RIGHT
+        dir_u = self.main_game.snake.direction == Direction.UP
+        dir_d = self.main_game.snake.direction == Direction.DOWN
 
-pygame.init()
+        state = [
+            (dir_r and self.is_collision(Direction.RIGHT)) or # Danger straight
+            (dir_l and self.is_collision(Direction.LEFT)) or
+            (dir_u and self.is_collision(Direction.UP)) or
+            (dir_d and self.is_collision(Direction.DOWN)),
+
+            (dir_u and self.is_collision(Direction.RIGHT)) or # Danger right
+            (dir_d and self.is_collision(Direction.LEFT)) or
+            (dir_l and self.is_collision(Direction.UP)) or
+            (dir_r and self.is_collision(Direction.DOWN)),
+
+            (dir_d and self.is_collision(Direction.RIGHT)) or # Danger left
+            (dir_u and self.is_collision(Direction.LEFT)) or
+            (dir_r and self.is_collision(Direction.UP)) or
+            (dir_l and self.is_collision(Direction.DOWN)),
+
+            dir_l, #direction
+            dir_r,
+            dir_u,
+            dir_d,
+
+            self.main_game.fruit.pos.x < self.main_game.snake.body[0].x,  # fruit.pos left
+            self.main_game.fruit.pos.x > self.main_game.snake.body[0].x,  # fruit.pos right
+            self.main_game.fruit.pos.y < self.main_game.snake.body[0].y,  # fruit.pos up
+            self.main_game.fruit.pos.y > self.main_game.snake.body[0].y  # fruit.pos down
+        ]
+        return np.array(state, dtype=int)
+
+    def remember(self, state, action, reward, next_state, done):
+        self.memory.append((state, action, reward, next_state, done)) # popleft if MAX_MEMORY is reached
+
+    def train_long_memory(self):
+        if len(self.memory) > BATCH_SIZE:
+            mini_sample = random.sample(self.memory, BATCH_SIZE) # list of tuples
+        else:
+            mini_sample = self.memory
+
+        states, actions, rewards, next_states, dones = zip(*mini_sample)
+        self.trainer.train_step(states, actions, rewards, next_states, dones)
+
+    def train_short_memory(self, state, action, reward, next_state, done):
+        self.trainer.train_step(state, action, reward, next_state, done)
+
+    def get_action(self, state):
+        # random moves: tradeoff exploration / exploitation
+        self.epsilon = 80 - self.n_games
+        final_move = [0,0,0]
+        if random.randint(0, 200) < self.epsilon:
+            move = random.randint(0, 2)
+            final_move[move] = 1
+        else:
+            state0 = torch.tensor(state, dtype=torch.float)
+            prediction = self.model(state0)
+            move = torch.argmax(prediction).item()
+            final_move[move] = 1
+
+        return final_move
 cell_size = 30
 cell_number = 15
+
+def train():
+    plot_scores = []
+    plot_mean_scores = []
+    total_score = 0
+    record = 0
+    pygame.init()
+    
+    agent = Agent()
+    
+    while True:
+        # get old state
+        state_old = agent.get_state()
+
+        # get move
+        final_move = agent.get_action(state_old)
+
+        # perform move and get new state
+        reward, done, score = agent.main_game.move(final_move)
+        state_new = agent.get_state()
+
+        # train short memory
+        agent.train_short_memory(state_old, final_move, reward, state_new, done)
+
+        # remember
+        agent.remember(state_old, final_move, reward, state_new, done)
+
+        if done:
+            # train long memory, plot result
+            agent.main_game.reset_game()    
+            agent.n_games += 1
+            agent.train_long_memory()
+
+            if score > record:
+                record = score
+                agent.model.save()
+
+            print('Game', agent.n_games, 'Score', score, 'Record:', record)
+
+            plot_scores.append(score)
+            total_score += score
+            mean_score = total_score / agent.n_games
+            plot_mean_scores.append(mean_score)
+            plt.ion()
+            display.clear_output(wait=True)
+            display.display(plt.gcf())
+            plt.clf()
+            plt.title('Training...')
+            plt.xlabel('Number of Games')
+            plt.ylabel('Score')
+            plt.plot(plot_scores)
+            plt.plot(plot_mean_scores)
+            plt.ylim(ymin=0)
+            plt.text(len(plot_scores)-1, plot_scores[-1], str(plot_scores[-1]))
+            plt.text(len(plot_mean_scores)-1, plot_mean_scores[-1], str(plot_mean_scores[-1]))
+            plt.show(block=False)
+            plt.pause(.1)
+            
+
+
+if __name__ == '__main__':
+    train()
+
 
 score = 0
 
 
-main_game = MAIN()
-main_game.move()
+#main_game = MAIN()
 
 
 
-#pygame.display.set_caption('Cool Snake Game')
-#screen = pygame.display.set_mode((cell_size*cell_number,cell_size*cell_number))
-#ctypes.windll.user32.SetForegroundWindow(pygame.display.get_wm_info()['window'])
-#clock = pygame.time.Clock()
-# while True : 
-#     # draw all our elements
-#     for event in pygame.event.get():
-#         if event.type == pygame.QUIT:
-#             main_game.game_over()
-#         if event.type == SCREEN_UPDATE:
-#             main_game.update()
-#         if event.type == pygame.KEYDOWN:
-#             if event.key == pygame.K_UP:
-#                 if main_game.snake.direction.y != 1 :
-#                     main_game.snake.direction = Vector2(0,-1)
-#             if event.key == pygame.K_RIGHT:
-#                 if main_game.snake.direction.x != -1 :
-#                     main_game.snake.direction = Vector2(1,0)
-#             if event.key == pygame.K_DOWN:
-#                 if main_game.snake.direction.y != -1 :
-#                     main_game.snake.direction = Vector2(0,1)
-#             if event.key == pygame.K_LEFT:
-#                 if main_game.snake.direction.x != 1 :
-#                     main_game.snake.direction = Vector2(-1,0)                
-        
-#     main_game.screen.fill((175,215,69))
-#     main_game.draw_elements()
-    
-    
-#     pygame.display.update()
-#     main_game.clock.tick(69)
+
